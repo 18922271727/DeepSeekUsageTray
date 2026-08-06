@@ -24,6 +24,13 @@ internal static class Program
             return RunScreenshotMode(outDir);
         }
 
+        // B绔欏彂甯栧懡浠よ妯″紡锛?bili <check|login|logout|list|publish|update> [...]
+        var biliIndex = Array.IndexOf(args, "bili");
+        if (biliIndex >= 0)
+        {
+            return BiliCli.RunAsync(args.Skip(biliIndex + 1).ToArray()).GetAwaiter().GetResult();
+        }
+
         using var mutex = new Mutex(true, @"Local\DeepSeekUsageTray", out var createdNew);
         if (!createdNew)
         {
