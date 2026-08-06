@@ -23,7 +23,7 @@
 
 ## 安装
 
-1. 到 Releases 页面下载最新版 `DeepSeekUsageTray-win-x64.exe`
+1. 到 [Releases](https://github.com/18922271727/DeepSeekUsageTray/releases) 页面下载最新版 `DeepSeekUsageTray-win-x64.exe`
 2. 双击运行，首次使用会自动弹出登录窗口，用手机扫码登录 DeepSeek 网页版即可
 3. 之后通过右下角托盘图标随时打开/隐藏
 

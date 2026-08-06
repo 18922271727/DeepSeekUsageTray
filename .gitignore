@@ -3,4 +3,5 @@ obj/
 dist/
 release/
 .nuget/
+.board-tmp/
 *.user
