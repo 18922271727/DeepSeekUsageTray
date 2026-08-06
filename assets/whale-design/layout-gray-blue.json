@@ -1,6 +1,6 @@
 {
   "canvas": 1024,
-  "background": "#B2B3B6",
+  "background": "#595A5B",
   "whale": {
     "width": 640,
     "top_margin": 70,
@@ -12,14 +12,14 @@
       "font": "Microsoft YaHei UI",
       "bold": true,
       "size_px": 120,
-      "color": "#3860DA"
+      "color": "#7FA6F7"
     },
     "line2": {
       "text_file": "text-subtitle.txt",
       "font": "Microsoft YaHei UI",
       "bold": true,
       "size_px": 64,
-      "color": "#4A4B4F"
+      "color": "#C9C9CC"
     },
     "offset_below_whale": 48,
     "line_gap": 24
