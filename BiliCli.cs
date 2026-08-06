@@ -43,6 +43,8 @@ internal static class BiliCli
                     return await LogoutAsync();
                 case "list":
                     return await ListAsync();
+                case "view":
+                    return await ViewAsync(opts);
                 case "publish":
                     return await PublishAsync(opts, update: false);
                 case "update":
@@ -221,6 +223,40 @@ internal static class BiliCli
         foreach (var article in list)
         {
             Console.WriteLine($"cv{article.Id}  {article.Title}");
+        }
+        return 0;
+    }
+
+    private static async Task<int> ViewAsync(Dictionary<string, string> opts)
+    {
+        var session = RequireLogin();
+        var aid = ParseCv(opts.GetValueOrDefault("aid", ""));
+        if (aid <= 0)
+        {
+            throw new InvalidOperationException("缺少 --aid（cv 编号）");
+        }
+
+        var root = await new BiliClient(session).GetArticleInfoAsync(aid);
+        if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var key in new[]
+                     {
+                         "id", "title", "category", "tags", "summary",
+                         "cover", "banner_url", "image_urls", "pic"
+                     })
+            {
+                if (data.TryGetProperty(key, out var value))
+                {
+                    Console.WriteLine(key + " = " + value.ToString());
+                }
+            }
+
+            var keys = data.EnumerateObject().Select(p => p.Name).ToArray();
+            Console.WriteLine("ALL_KEYS: " + string.Join(",", keys));
+        }
+        else
+        {
+            Console.WriteLine(root.ToString());
         }
         return 0;
     }
@@ -441,6 +477,7 @@ internal static class BiliCli
               bili login [--out qr.png] [--force true] [--generate-only --key-file key.txt | --poll-key-file key.txt]   生成二维码登录
               bili logout                        清除登录状态
               bili list                          列出已发布文章
+              bili view --aid <cv编号>           查看文章详情（封面等字段）
               bili publish --title <标题> --content <正文.md> [--cover <封面图>] [--category <科技|id>] [--tags <a,b>] [--summary <摘要>]
               bili update --aid <cv编号> --title <标题> --content <正文.md> [--cover <封面图>] [--category ...] [--tags ...] [--summary ...]
             """);

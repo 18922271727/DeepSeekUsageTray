@@ -155,7 +155,10 @@ internal sealed class BiliClient
         if (root.TryGetProperty("data", out var data) &&
             data.TryGetProperty("url", out var url))
         {
-            return url.GetString() ?? throw new BiliApiException(0, "图片上传成功但未返回链接。");
+            var value = url.GetString() ?? throw new BiliApiException(0, "图片上传成功但未返回链接。");
+            return value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                ? "https://" + value[7..]
+                : value;
         }
         throw new BiliApiException(0, "图片上传失败：返回数据里没有图片链接。");
     }
@@ -239,6 +242,16 @@ internal sealed class BiliClient
         return result;
     }
 
+    public async Task<JsonElement> GetArticleInfoAsync(long articleId)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/x/article/creative/article/info?id=" + articleId);
+        ApplyCookies(request);
+        using var response = await _http.SendAsync(request);
+        return ParseResponse(await response.Content.ReadAsStringAsync());
+    }
+
     private Dictionary<string, string> BuildForm(BiliDraft draft, long articleId = 0)
     {
         var form = new Dictionary<string, string>
@@ -259,6 +272,7 @@ internal sealed class BiliClient
         }
         if (!string.IsNullOrWhiteSpace(draft.Cover))
         {
+            form["banner_url"] = draft.Cover;
             form["cover"] = draft.Cover;
         }
         if (articleId > 0)
