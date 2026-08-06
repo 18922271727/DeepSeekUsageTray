@@ -5,3 +5,12 @@ release/
 .nuget/
 .board-tmp/
 *.user
+
+# 本地敏感数据（登录会话 / 配置 / 密钥），禁止入库
+bilibili-session*.json
+config*.json
+*.session.json
+*.credentials.json
+.env
+.env.*
+secrets*.json
