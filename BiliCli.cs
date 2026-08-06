@@ -228,6 +228,7 @@ internal static class BiliCli
     private static async Task<int> PublishAsync(Dictionary<string, string> opts, bool update)
     {
         var session = RequireLogin();
+        await EnsureBuvidAsync(session);
         var client = new BiliClient(session);
 
         var title = opts.GetValueOrDefault("title", "").Trim();
@@ -286,6 +287,44 @@ internal static class BiliCli
             throw new InvalidOperationException("未登录 B站，请先运行 bili login 扫码登录");
         }
         return session;
+    }
+
+    /// <summary>
+    /// 部分风控接口（如发文章）需要 buvid3/buvid4 浏览器标识，扫码登录不会返回，这里自动补充。
+    /// </summary>
+    private static async Task EnsureBuvidAsync(BiliSession session)
+    {
+        if (session.Cookies.TryGetValue("buvid3", out var existing) &&
+            !string.IsNullOrWhiteSpace(existing))
+        {
+            return;
+        }
+
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri("https://api.bilibili.com") };
+            http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", ChromeUa);
+            http.DefaultRequestHeaders.TryAddWithoutValidation("Referer", "https://www.bilibili.com/");
+            using var response = await http.GetAsync("/x/frontend/finger/spi");
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("data", out var data))
+            {
+                if (data.TryGetProperty("b_3", out var b3) && b3.GetString() is { Length: > 0 } b3Value)
+                {
+                    session.Cookies["buvid3"] = b3Value;
+                }
+                if (data.TryGetProperty("b_4", out var b4) && b4.GetString() is { Length: > 0 } b4Value)
+                {
+                    session.Cookies["buvid4"] = b4Value;
+                }
+                session.Save();
+            }
+        }
+        catch
+        {
+            // 获取失败不阻塞，某些接口可能仍可用
+        }
     }
 
     private static async Task<long> ResolveCategoryAsync(BiliClient client, string wanted)
