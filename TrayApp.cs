@@ -10,6 +10,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly MainForm _main;
     private SettingsForm? _settings;
     private LoginForm? _login;
+    private BiliPublishForm? _biliPublish;
 
     public TrayApp()
     {
@@ -30,6 +31,7 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add("显示 / 隐藏", null, (_, _) => ToggleWindow());
         menu.Items.Add("立即刷新", null, (_, _) => _main.RefreshNow());
         menu.Items.Add("扫码登录 DeepSeek…", null, (_, _) => OpenLogin());
+        menu.Items.Add("B站发帖器…", null, (_, _) => OpenBiliPublish());
         menu.Items.Add("设置…", null, (_, _) => OpenSettings());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitApp());
@@ -89,6 +91,19 @@ internal sealed class TrayApp : ApplicationContext
             _login = null;
         };
         _login.ShowDialog(_main.Visible ? _main : null);
+    }
+
+    private void OpenBiliPublish()
+    {
+        if (_biliPublish is { IsDisposed: false })
+        {
+            _biliPublish.Activate();
+            return;
+        }
+
+        _biliPublish = new BiliPublishForm();
+        _biliPublish.FormClosed += (_, _) => _biliPublish = null;
+        _biliPublish.Show(_main.Visible ? _main : null);
     }
 
     private void ExitApp()
