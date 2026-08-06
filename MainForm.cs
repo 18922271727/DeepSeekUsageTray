@@ -26,7 +26,7 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _countdownTimer;
     private readonly System.Windows.Forms.Timer _progressTimer;
     private readonly Dictionary<Label, System.Windows.Forms.Timer> _flashTimers = new();
-    private float _progress;
+    private DateTime _progressAnchor = DateTime.MinValue;
     private long _lastTodayTokens;
     private long _lastTodayRequests;
     private double _lastTodayCost;
@@ -103,8 +103,12 @@ internal sealed class MainForm : Form
         _progressTimer = new System.Windows.Forms.Timer { Interval = 1_000 };
         _progressTimer.Tick += (_, _) =>
         {
-            _progress = Math.Min(1f, _progress + 1f / 60f);
-            _status.Progress = _progress;
+            if (_progressAnchor == DateTime.MinValue)
+            {
+                _progressAnchor = DateTime.Now;
+            }
+            var elapsed = (DateTime.Now - _progressAnchor).TotalSeconds;
+            _status.Progress = (float)Math.Min(1.0, elapsed / 60.0);
         };
         _progressTimer.Start();
 
@@ -751,7 +755,7 @@ internal sealed class MainForm : Form
         finally
         {
             _refreshing = false;
-            _progress = 0f;
+            _progressAnchor = DateTime.Now;
             _status.Progress = 0f;
         }
     }
@@ -1100,10 +1104,11 @@ internal sealed class MainForm : Form
         var start = DateTime.Now;
         var timer = new System.Windows.Forms.Timer { Interval = 30 };
         _flashTimers[label] = timer;
+        label.ForeColor = FxPanel.FxGreen;
         timer.Tick += (_, _) =>
         {
-            var t = (DateTime.Now - start).TotalSeconds / 1.2;
-            if (t >= 1)
+            var elapsed = (DateTime.Now - start).TotalSeconds;
+            if (elapsed >= 2.0)
             {
                 timer.Stop();
                 timer.Dispose();
@@ -1112,8 +1117,18 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            var eased = 1 - (1 - t) * (1 - t);
-            label.ForeColor = Lerp(FxPanel.FxGreen, TextWhite, (float)eased);
+            // 前 0.35 秒保持亮绿，随后 1.65 秒慢慢变回白色
+            float fade;
+            if (elapsed <= 0.35)
+            {
+                fade = 0f;
+            }
+            else
+            {
+                fade = (float)Math.Min(1.0, (elapsed - 0.35) / 1.65);
+                fade = 1 - (1 - fade) * (1 - fade);
+            }
+            label.ForeColor = Lerp(FxPanel.FxGreen, TextWhite, fade);
         };
         timer.Start();
     }

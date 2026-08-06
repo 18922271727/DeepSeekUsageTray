@@ -69,7 +69,7 @@ internal sealed class FxPanel : Panel
 
     private readonly List<FloatingFx> _fx = new();
     private readonly System.Windows.Forms.Timer _fxTimer;
-    private readonly Font _fxFont = new("Segoe UI", 11f, FontStyle.Bold);
+    private readonly Font _fxFont = new("Segoe UI", 12f, FontStyle.Bold);
 
     public FxPanel()
     {
@@ -116,15 +116,15 @@ internal sealed class FxPanel : Panel
         {
             var fx = _fx[i];
             var elapsed = (DateTime.Now - fx.Born).TotalSeconds;
-            if (elapsed >= 1.5)
+            if (elapsed >= 2.6)
             {
                 _fx.RemoveAt(i);
                 continue;
             }
 
-            var p = (float)(elapsed / 1.5);
-            var alpha = (int)(255 * (1 - p) * (1 - p));
-            var y = (int)(fx.StartY - 30 * p);
+            var p = (float)(elapsed / 2.6);
+            var alpha = (int)(255 * (1 - p));
+            var y = (int)(fx.StartY - 46 * p);
             using var brush = new SolidBrush(Color.FromArgb(alpha, FxGreen));
             g.DrawString(fx.Text, _fxFont, brush, fx.X, y);
         }
