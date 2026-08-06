@@ -8,7 +8,11 @@ param(
     [int]$TextOffset = 64,
     [int]$TextSize = 58,
     [string]$TextColorHex = "",
-    [string]$BackgroundColorHex = ""
+    [string]$BackgroundColorHex = "",
+    [string]$TitlePath2 = "",
+    [int]$TextSize2 = 64,
+    [int]$LineGap = 24,
+    [string]$TextColor2Hex = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +27,8 @@ if (-not $OutPath) { $OutPath = Join-Path $repoRoot 'assets\logo-with-title.png'
 if (-not $TextColorHex) { $TextColorHex = '#0F3B5E' }
 
 $title = [System.IO.File]::ReadAllText($TitlePath, [System.Text.Encoding]::UTF8).Trim()
+$title2 = ""
+if ($TitlePath2) { $title2 = [System.IO.File]::ReadAllText($TitlePath2, [System.Text.Encoding]::UTF8).Trim() }
 $src = New-Object System.Drawing.Bitmap($SourceWhale)
 
 # Compute bounding box of non-transparent pixels (step 2 for speed)
@@ -67,10 +73,22 @@ $sf.Alignment = [System.Drawing.StringAlignment]::Center
 $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
 $size = $g.MeasureString($title, $font)
 $textY = $wy + $whaleH + $TextOffset
-$textH = [int]$size.Height
-$textRect = New-Object System.Drawing.RectangleF(0, $textY, $Canvas, $textH)
 $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml($TextColorHex))
-$g.DrawString($title, $font, $textBrush, $textRect, $sf)
+if ($title2) {
+    $font2 = New-Object System.Drawing.Font('Microsoft YaHei UI', $TextSize2, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    if (-not $TextColor2Hex) { $TextColor2Hex = $TextColorHex }
+    $textBrush2 = New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml($TextColor2Hex))
+    $size2 = $g.MeasureString($title2, $font2)
+    $rect1 = New-Object System.Drawing.RectangleF(0, $textY, $Canvas, [int]$size.Height)
+    $g.DrawString($title, $font, $textBrush, $rect1, $sf)
+    $rect2 = New-Object System.Drawing.RectangleF(0, ($textY + [int]$size.Height + $LineGap), $Canvas, [int]$size2.Height)
+    $g.DrawString($title2, $font2, $textBrush2, $rect2, $sf)
+    $textBrush2.Dispose()
+    $font2.Dispose()
+} else {
+    $textRect = New-Object System.Drawing.RectangleF(0, $textY, $Canvas, [int]$size.Height)
+    $g.DrawString($title, $font, $textBrush, $textRect, $sf)
+}
 
 $dir = Split-Path $OutPath -Parent
 if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }

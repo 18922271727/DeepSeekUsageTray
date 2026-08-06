@@ -1,0 +1,28 @@
+{
+  "canvas": 1024,
+  "background": "#B2B3B6",
+  "whale": {
+    "width": 640,
+    "top_margin": 70,
+    "source_bbox": [188, 168, 910, 812]
+  },
+  "title": {
+    "line1": {
+      "text_file": "text-title.txt",
+      "font": "Microsoft YaHei UI",
+      "bold": true,
+      "size_px": 120,
+      "color": "#3860DA"
+    },
+    "line2": {
+      "text_file": "text-subtitle.txt",
+      "font": "Microsoft YaHei UI",
+      "bold": true,
+      "size_px": 64,
+      "color": "#4A4B4F"
+    },
+    "offset_below_whale": 48,
+    "line_gap": 24
+  },
+  "output": "assets/logo-gray-blue.png"
+}
