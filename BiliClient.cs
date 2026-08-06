@@ -21,6 +21,7 @@ public sealed class BiliDraft
     public string Summary { get; set; } = string.Empty;
     public string Tags { get; set; } = string.Empty;
     public string ContentHtml { get; set; } = string.Empty;
+    public string Cover { get; set; } = string.Empty;
 }
 
 public sealed class MyArticle
@@ -255,6 +256,10 @@ internal sealed class BiliClient
         if (!string.IsNullOrWhiteSpace(draft.Tags))
         {
             form["tags"] = draft.Tags;
+        }
+        if (!string.IsNullOrWhiteSpace(draft.Cover))
+        {
+            form["cover"] = draft.Cover;
         }
         if (articleId > 0)
         {

@@ -233,6 +233,7 @@ internal static class BiliCli
 
         var title = opts.GetValueOrDefault("title", "").Trim();
         var contentPath = opts.GetValueOrDefault("content", "");
+        var coverPath = opts.GetValueOrDefault("cover", "");
         if (string.IsNullOrWhiteSpace(title))
         {
             throw new InvalidOperationException("缺少 --title");
@@ -240,6 +241,10 @@ internal static class BiliCli
         if (!File.Exists(contentPath))
         {
             throw new InvalidOperationException("找不到正文文件: " + contentPath);
+        }
+        if (!string.IsNullOrWhiteSpace(coverPath) && !File.Exists(coverPath))
+        {
+            throw new InvalidOperationException("找不到封面图片: " + coverPath);
         }
 
         long aid = 0;
@@ -265,6 +270,11 @@ internal static class BiliCli
                 markdown,
                 src => ResolveImageAsync(client, src, contentDir))
         };
+        if (!string.IsNullOrWhiteSpace(coverPath))
+        {
+            Console.WriteLine("正在上传封面: " + Path.GetFileName(coverPath));
+            draft.Cover = await client.UploadImageAsync(coverPath);
+        }
 
         var articleId = update
             ? await client.UpdateArticleAsync(aid, draft)
@@ -431,8 +441,8 @@ internal static class BiliCli
               bili login [--out qr.png] [--force true] [--generate-only --key-file key.txt | --poll-key-file key.txt]   生成二维码登录
               bili logout                        清除登录状态
               bili list                          列出已发布文章
-              bili publish --title <标题> --content <正文.md> [--category <科技|id>] [--tags <a,b>] [--summary <摘要>]
-              bili update --aid <cv编号> --title <标题> --content <正文.md> [--category ...] [--tags ...] [--summary ...]
+              bili publish --title <标题> --content <正文.md> [--cover <封面图>] [--category <科技|id>] [--tags <a,b>] [--summary <摘要>]
+              bili update --aid <cv编号> --title <标题> --content <正文.md> [--cover <封面图>] [--category ...] [--tags ...] [--summary ...]
             """);
     }
 }
