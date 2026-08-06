@@ -19,6 +19,14 @@
 | `make-logo.ps1` | 从 `whale_source.png` 重新生成组合图，可改鲸鱼大小、文字颜色/字号 |
 | `recolor.py` | 按调色板映射给鲸鱼整体换色（保持透明底） |
 | `recolor-example.json` | 换色示例：深蓝 → 青绿色版本 |
+| `recolor-gray-blue.json` | 参考图配色映射：深蓝 #3860DA / 浅蓝 #8BA5F6 / 白 #FEFEFE |
+
+## 配色版本
+
+| 版本 | 说明 | 产出图 |
+|---|---|---|
+| 默认 | 原配色（深蓝身体 + 浅蓝肚皮 + 透明底） | `whale_source.png` |
+| 参考图灰蓝版 | 按“参考.png”配色：灰底 #B2B3B6、鲸鱼上深蓝 #3860DA、下浅蓝 #8BA5F6、文字深灰 | `assets/logo-gray-blue.png` |
 
 ## 怎么制作新配色
 

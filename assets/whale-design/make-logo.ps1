@@ -7,7 +7,8 @@ param(
     [int]$TopMargin = 24,
     [int]$TextOffset = 64,
     [int]$TextSize = 58,
-    [string]$TextColorHex = ""
+    [string]$TextColorHex = "",
+    [string]$BackgroundColorHex = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,7 +47,11 @@ $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-$g.Clear([System.Drawing.Color]::Transparent)
+if ($BackgroundColorHex) {
+    $g.Clear([System.Drawing.ColorTranslator]::FromHtml($BackgroundColorHex))
+} else {
+    $g.Clear([System.Drawing.Color]::Transparent)
+}
 
 $scale = $WhaleWidth / $bboxW
 $whaleH = [int]($bboxH * $scale)
