@@ -101,7 +101,7 @@ internal sealed class LanzouLoginForm : Form
         try
         {
             var cookies = await CollectCookiesAsync();
-            if (cookies.TryGetValue("ylogin", out var ylogin) && ylogin.Length >= 8)
+            if (cookies.TryGetValue("ylogin", out var ylogin) && ylogin.Length >= 4)
             {
                 _yloginStreak++;
                 if (_yloginStreak >= 2)
