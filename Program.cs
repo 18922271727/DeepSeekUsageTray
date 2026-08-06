@@ -31,6 +31,13 @@ internal static class Program
             return BiliCli.RunAsync(args.Skip(biliIndex + 1).ToArray()).GetAwaiter().GetResult();
         }
 
+        // 蓝奏云发布命令：lanzou <login|check|logout>
+        var lanzouIndex = Array.IndexOf(args, "lanzou");
+        if (lanzouIndex >= 0)
+        {
+            return LanzouCli.Run(args.Skip(lanzouIndex + 1).ToArray());
+        }
+
         using var mutex = new Mutex(true, @"Local\DeepSeekUsageTray", out var createdNew);
         if (!createdNew)
         {

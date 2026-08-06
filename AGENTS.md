@@ -36,3 +36,11 @@
 - PowerShell 5.1 读 UTF-8 无 BOM 中文会乱码：脚本避免中文字面量，或从 UTF-8 文件读取文本。
 - 图像识别：DashScope API（环境变量 `DASHSCOPE_API_KEY`），模型 `qwen3-vl-plus`。
 - 用完剪贴板图片、临时请求文件后立即删除。
+
+## 蓝奏云发布（2026-08 新增）
+
+- 登录态：`DeepSeekUsageTray.exe lanzou login`（内嵌网页登录，保存到 `%APPDATA%\DeepSeekUsageTray\lanzou-session.json`，已被 .gitignore 忽略）。
+- 登录窗口必须由用户在**自己的桌面**双击 `tools\lanzou-login.cmd` 打开（沙箱里启动的 GUI 用户看不到），登录后点底部蓝色“完成登录并保存”。
+- 一键发布：`tools\publish-lanzou.ps1`（打包单文件 exe → zip → 上传蓝奏云 → 更新 `docs/download.md`）。
+- 上传脚本：`tools\lanzou_publish_pw.py`（Playwright + 本机 Edge 真实浏览器方案，第三方 lanzou-api 已失效）；补抓链接用 `tools\lanzou_get_share_pw.py`。两者输出 `URL: / PWD: / SIZE_MB:` 供脚本解析。
+- 蓝奏云免费账号单文件上限 100MB，zip 通常 40~50MB；不要上传裸 exe（约 109MB）。

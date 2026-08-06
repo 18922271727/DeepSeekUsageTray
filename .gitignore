@@ -2,6 +2,7 @@ bin/
 obj/
 dist/
 release/
+publish/
 .nuget/
 .board-tmp/
 *.user
@@ -14,3 +15,6 @@ config*.json
 .env
 .env.*
 secrets*.json
+tools/session/
+tools/.pw-lanzou-profile/
+tools/.pw-*/
