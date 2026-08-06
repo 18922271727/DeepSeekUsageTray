@@ -89,6 +89,8 @@ internal static class BiliCli
         }
 
         var outPath = opts.TryGetValue("out", out var o) ? o : "bili-login-qr.png";
+        var keyFile = opts.TryGetValue("key-file", out var k) ? k : null;
+        var pollKeyFile = opts.TryGetValue("poll-key-file", out var pk) ? pk : null;
         var container = new CookieContainer();
         using var handler = new HttpClientHandler
         {
@@ -99,29 +101,37 @@ internal static class BiliCli
         http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", ChromeUa);
         http.DefaultRequestHeaders.TryAddWithoutValidation("Referer", "https://www.bilibili.com/");
 
-        Console.WriteLine("正在生成登录二维码…");
-        var qrcodeKey = "";
-        using (var request = new HttpRequestMessage(HttpMethod.Get, "/x/passport-login/web/qrcode/generate"))
+        string qrcodeKey;
+        var pollingExistingKey = !string.IsNullOrWhiteSpace(pollKeyFile) && File.Exists(pollKeyFile);
+        if (pollingExistingKey)
         {
-            using var response = await http.SendAsync(request);
-            var json = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("data", out var data) ||
-                !data.TryGetProperty("qrcode_key", out var keyEl) ||
-                !data.TryGetProperty("url", out var urlEl))
+            qrcodeKey = (await File.ReadAllTextAsync(pollKeyFile)).Trim();
+        }
+        else
+        {
+            Console.WriteLine("正在生成登录二维码…");
+            qrcodeKey = await GenerateQrAsync(http, outPath);
+            if (!string.IsNullOrWhiteSpace(keyFile))
             {
-                throw new InvalidOperationException("获取二维码失败: " + json);
+                await File.WriteAllTextAsync(keyFile, qrcodeKey);
             }
-
-            qrcodeKey = keyEl.GetString() ?? "";
-            using var generator = new QRCodeGenerator();
-            using var qrData = generator.CreateQrCode(urlEl.GetString() ?? "", QRCodeGenerator.ECCLevel.M);
-            var png = new PngByteQRCode(qrData);
-            File.WriteAllBytes(outPath, png.GetGraphic(6));
+            if (opts.TryGetValue("generate-only", out var go) && go == "true")
+            {
+                Console.WriteLine("二维码已生成: " + Path.GetFullPath(outPath));
+                Console.WriteLine("扫码完成后运行: bili login --poll-key-file " + keyFile);
+                return 0;
+            }
         }
 
-        Console.WriteLine("二维码已保存: " + Path.GetFullPath(outPath));
-        Console.WriteLine("请用 B站手机 App 扫码并确认登录…");
+        if (pollingExistingKey)
+        {
+            Console.WriteLine("等待手机扫码确认…（二维码已在前一步生成）");
+        }
+        else
+        {
+            Console.WriteLine("二维码已保存: " + Path.GetFullPath(outPath));
+            Console.WriteLine("请用 B站手机 App 扫码并确认登录…");
+        }
 
         var deadline = DateTime.Now.AddMinutes(2);
         while (DateTime.Now < deadline)
@@ -167,6 +177,27 @@ internal static class BiliCli
         var (okFinal, unameFinal) = await new BiliClient(newSession).CheckLoginAsync();
         Console.WriteLine(okFinal ? "✓ 登录成功: " + unameFinal : "✓ 已保存登录状态");
         return 0;
+    }
+
+    private static async Task<string> GenerateQrAsync(HttpClient http, string outPath)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/x/passport-login/web/qrcode/generate");
+        using var response = await http.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("qrcode_key", out var keyEl) ||
+            !data.TryGetProperty("url", out var urlEl))
+        {
+            throw new InvalidOperationException("获取二维码失败: " + json);
+        }
+
+        var qrcodeKey = keyEl.GetString() ?? "";
+        using var generator = new QRCodeGenerator();
+        using var qrData = generator.CreateQrCode(urlEl.GetString() ?? "", QRCodeGenerator.ECCLevel.M);
+        var png = new PngByteQRCode(qrData);
+        File.WriteAllBytes(outPath, png.GetGraphic(6));
+        return qrcodeKey;
     }
 
     private static async Task<int> LogoutAsync()
@@ -358,7 +389,7 @@ internal static class BiliCli
             """
             B站发帖命令行:
               bili check                         检查登录状态
-              bili login [--out qr.png] [--force true]   生成二维码登录
+              bili login [--out qr.png] [--force true] [--generate-only --key-file key.txt | --poll-key-file key.txt]   生成二维码登录
               bili logout                        清除登录状态
               bili list                          列出已发布文章
               bili publish --title <标题> --content <正文.md> [--category <科技|id>] [--tags <a,b>] [--summary <摘要>]
