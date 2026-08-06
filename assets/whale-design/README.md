@@ -26,7 +26,7 @@
 | 版本 | 说明 | 产出图 |
 |---|---|---|
 | 默认 | 原配色（深蓝身体 + 浅蓝肚皮 + 透明底） | `whale_source.png` |
-| 参考图灰蓝版 | 按“参考.png”配色：灰底 #595A5B（原灰 #B2B3B6 明度减半）、鲸鱼上深蓝 #3860DA、下浅蓝 #8BA5F6、两行文字（DeepSeek / 计费工具 v0.1） | `assets/logo-gray-blue.png` |
+| 参考图灰蓝版 | 按“参考.png”配色：灰底 #D8D9DA（原灰 #B2B3B6 向白色靠近一半）、鲸鱼上深蓝 #3860DA、下浅蓝 #8BA5F6、两行文字（DeepSeek / 计费工具 v0.1） | `assets/logo-gray-blue.png` |
 
 ## 怎么制作新配色
 
