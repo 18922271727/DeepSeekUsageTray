@@ -14,7 +14,7 @@
 
 ## 使用方式
 
-1. 到 GitHub Releases 页面下载最新版 `DeepSeekUsageTray-win-x64.exe`
+1. 从下方蓝奏云链接下载压缩包（约 43 MB，自包含单文件，解压后双击即可运行，无需安装运行库）
 2. 双击运行，首次使用会弹出登录窗口，用手机扫码登录 DeepSeek 网页版即可
 3. 之后通过右下角托盘图标随时打开/隐藏
 
@@ -32,8 +32,6 @@
 
 ## 获取方式
 
-项目开源在 GitHub：https://github.com/18922271727/DeepSeekUsageTray
-
-下载地址：https://github.com/18922271727/DeepSeekUsageTray/releases
+下载：https://wwbjd.lanzoul.com/iaNCH40wb6rg
 
 > 本工具仅供个人学习参考使用，请遵守 DeepSeek 使用条款；网页接口可能随平台改版而失效，需要时请更新工具。

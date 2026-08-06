@@ -191,6 +191,26 @@ internal sealed class BiliClient
         return ExtractArticleId(root);
     }
 
+    /// <summary>删除一篇专栏文章（不可恢复）。</summary>
+    public async Task DeleteArticleAsync(long articleId)
+    {
+        var form = new Dictionary<string, string>
+        {
+            ["aid"] = articleId.ToString(),
+            ["csrf"] = _session.Csrf
+        };
+        using var content = new FormUrlEncodedContent(form);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            "https://member.bilibili.com/x/web/article/delete")
+        {
+            Content = content
+        };
+        ApplyCookies(request);
+        using var response = await _http.SendAsync(request);
+        ParseResponse(await response.Content.ReadAsStringAsync());
+    }
+
     /// <summary>拉取我的专栏文章列表。</summary>
     public async Task<List<MyArticle>> ListMyArticlesAsync()
     {

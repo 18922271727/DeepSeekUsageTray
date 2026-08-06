@@ -45,6 +45,8 @@ internal static class BiliCli
                     return await ListAsync();
                 case "view":
                     return await ViewAsync(opts);
+                case "delete":
+                    return await DeleteAsync(opts);
                 case "publish":
                     return await PublishAsync(opts, update: false);
                 case "update":
@@ -258,6 +260,20 @@ internal static class BiliCli
         {
             Console.WriteLine(root.ToString());
         }
+        return 0;
+    }
+
+    private static async Task<int> DeleteAsync(Dictionary<string, string> opts)
+    {
+        var session = RequireLogin();
+        var aid = ParseCv(opts.GetValueOrDefault("aid", ""));
+        if (aid <= 0)
+        {
+            throw new InvalidOperationException("缺少 --aid（cv 编号）");
+        }
+
+        await new BiliClient(session).DeleteArticleAsync(aid);
+        Console.WriteLine("✓ 文章已删除: cv" + aid);
         return 0;
     }
 
@@ -478,6 +494,7 @@ internal static class BiliCli
               bili logout                        清除登录状态
               bili list                          列出已发布文章
               bili view --aid <cv编号>           查看文章详情（封面等字段）
+              bili delete --aid <cv编号>         删除已发布文章（不可恢复）
               bili publish --title <标题> --content <正文.md> [--cover <封面图>] [--category <科技|id>] [--tags <a,b>] [--summary <摘要>]
               bili update --aid <cv编号> --title <标题> --content <正文.md> [--cover <封面图>] [--category ...] [--tags ...] [--summary ...]
             """);
