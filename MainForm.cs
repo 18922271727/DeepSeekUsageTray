@@ -11,19 +11,26 @@ namespace DeepSeekUsageTray;
 
 internal sealed class MainForm : Form
 {
-    private static readonly Color BgColor = Color.FromArgb(27, 27, 28);
-    private static readonly Color PanelColor = Color.FromArgb(42, 42, 45);
+    internal static readonly Color BgColor = Color.FromArgb(27, 27, 28);
+    internal static readonly Color PanelColor = Color.FromArgb(42, 42, 45);
     private static readonly Color BorderColor = Color.FromArgb(58, 58, 62);
-    private static readonly Color AccentBlue = Color.FromArgb(59, 130, 246);
-    private static readonly Color TextWhite = Color.FromArgb(243, 244, 246);
-    private static readonly Color TextGray = Color.FromArgb(156, 163, 175);
-    private static readonly Color TextError = Color.FromArgb(248, 113, 113);
+    internal static readonly Color AccentBlue = Color.FromArgb(59, 130, 246);
+    internal static readonly Color TextWhite = Color.FromArgb(243, 244, 246);
+    internal static readonly Color TextGray = Color.FromArgb(156, 163, 175);
+    internal static readonly Color TextError = Color.FromArgb(248, 113, 113);
     private static readonly Color PricePeakColor = Color.FromArgb(239, 68, 68);
     private static readonly Color PriceOffPeakColor = Color.FromArgb(34, 197, 94);
 
     private readonly AppConfig _config;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly System.Windows.Forms.Timer _countdownTimer;
+    private readonly System.Windows.Forms.Timer _progressTimer;
+    private readonly Dictionary<Label, System.Windows.Forms.Timer> _flashTimers = new();
+    private float _progress;
+    private long _lastTodayTokens;
+    private long _lastTodayRequests;
+    private double _lastTodayCost;
+    private bool _hasTodayBaseline;
 
     private Label _balanceLabel = new();
     private Label _todayTokens = new();
@@ -32,7 +39,7 @@ internal sealed class MainForm : Form
     private Label _monthTokens = new();
     private Label _monthRequests = new();
     private Label _monthCost = new();
-    private Label _status = new();
+    private ProgressStatusBar _status = new();
     private Label _liveNote = new();
     private Label _priceNote = new();
     private Label _priceStatus = new();
@@ -46,7 +53,7 @@ internal sealed class MainForm : Form
     private TabButton _tabOverview = null!;
     private TabButton _tabLive = null!;
     private TabButton _tabPrice = null!;
-    private Panel _overviewPanel = null!;
+    private FxPanel _overviewPanel = null!;
     private Panel _livePanel = null!;
     private Panel _pricePanel = null!;
     private Panel _separatorLeft = null!;
@@ -91,6 +98,15 @@ internal sealed class MainForm : Form
         _timer = new System.Windows.Forms.Timer { Interval = 60_000 };
         _timer.Tick += (_, _) => RefreshNow();
         _timer.Start();
+
+        // 底部进度条：每 1 秒前进 1/60，60 秒填满，刷新完成后归零重来
+        _progressTimer = new System.Windows.Forms.Timer { Interval = 1_000 };
+        _progressTimer.Tick += (_, _) =>
+        {
+            _progress = Math.Min(1f, _progress + 1f / 60f);
+            _status.Progress = _progress;
+        };
+        _progressTimer.Start();
 
         // 价格页状态倒计时：每秒更新当前高峰/低峰状态与剩余时间
         _countdownTimer = new System.Windows.Forms.Timer { Interval = 1_000 };
@@ -219,7 +235,7 @@ internal sealed class MainForm : Form
             BackColor = BorderColor
         };
 
-        _overviewPanel = new Panel
+        _overviewPanel = new FxPanel
         {
             Bounds = new Rectangle(1, 66, ClientSize.Width - 2, 230),
             BackColor = BgColor
@@ -308,8 +324,6 @@ internal sealed class MainForm : Form
 
         _status.AutoSize = false;
         _status.Bounds = new Rectangle(1, bodyPanel.Height - 24, bodyPanel.Width - 2, 23);
-        _status.TextAlign = ContentAlignment.MiddleCenter;
-        _status.BackColor = PanelColor;
         _status.ForeColor = TextGray;
         _status.Text = "准备就绪";
 
@@ -737,6 +751,8 @@ internal sealed class MainForm : Form
         finally
         {
             _refreshing = false;
+            _progress = 0f;
+            _status.Progress = 0f;
         }
     }
 
@@ -778,9 +794,13 @@ internal sealed class MainForm : Form
 
         if (summary.UsageConfigured)
         {
-            _todayTokens.Text = FormatTokens(summary.TodayTokens);
-            _todayRequests.Text = summary.TodayRequests.ToString("N0");
-            _todayCost.Text = FormatCost(summary.TodayCost, summary.Currency);
+            var newTokens = summary.TodayTokens;
+            var newRequests = summary.TodayRequests;
+            var newCost = summary.TodayCost;
+
+            _todayTokens.Text = FormatTokens(newTokens);
+            _todayRequests.Text = newRequests.ToString("N0");
+            _todayCost.Text = FormatCost(newCost, summary.Currency);
             _monthTokens.Text = FormatTokens(summary.MonthTokens);
             _monthRequests.Text = summary.MonthRequests.ToString("N0");
             _monthCost.Text = FormatCost(summary.MonthCost, summary.Currency);
@@ -790,9 +810,51 @@ internal sealed class MainForm : Form
             CenterLabel(_monthTokens, 76);
             CenterLabel(_monthRequests, 180);
             CenterLabel(_monthCost, 284);
+
+            if (_hasTodayBaseline)
+            {
+                var diffTokens = newTokens - _lastTodayTokens;
+                var diffRequests = newRequests - _lastTodayRequests;
+                var diffCost = newCost - _lastTodayCost;
+
+                if (diffTokens > 0)
+                {
+                    SpawnTodayFx(_todayTokens, "+" + FormatTokens(diffTokens));
+                }
+                if (diffRequests > 0)
+                {
+                    SpawnTodayFx(_todayRequests, "+" + diffRequests.ToString("N0"));
+                }
+                if (diffCost > 0)
+                {
+                    SpawnTodayFx(_todayCost, "+" + FormatCost(diffCost, summary.Currency).Replace(" ", ""));
+                }
+
+                if (diffTokens > 0)
+                {
+                    FlashGreen(_todayTokens);
+                }
+                if (diffRequests > 0)
+                {
+                    FlashGreen(_todayRequests);
+                }
+                if (diffCost > 0)
+                {
+                    FlashGreen(_todayCost);
+                }
+            }
+            else
+            {
+                _hasTodayBaseline = true;
+            }
+
+            _lastTodayTokens = newTokens;
+            _lastTodayRequests = newRequests;
+            _lastTodayCost = newCost;
         }
         else
         {
+            _hasTodayBaseline = false;
             _todayTokens.Text = "--";
             _todayRequests.Text = "--";
             _todayCost.Text = "--";
@@ -1021,4 +1083,43 @@ internal sealed class MainForm : Form
 
     private static string FormatCost(double cost, string currency)
         => (currency == "CNY" ? "¥ " : "$ ") + cost.ToString("N2");
+
+    private void SpawnTodayFx(Label label, string text)
+        => _overviewPanel.SpawnFloating(text, new Point(label.Left, label.Top - 8));
+
+    // 数字从亮绿色渐变回白色，模拟“打击反馈”
+    private void FlashGreen(Label label)
+    {
+        if (_flashTimers.TryGetValue(label, out var old))
+        {
+            old.Stop();
+            old.Dispose();
+            _flashTimers.Remove(label);
+        }
+
+        var start = DateTime.Now;
+        var timer = new System.Windows.Forms.Timer { Interval = 30 };
+        _flashTimers[label] = timer;
+        timer.Tick += (_, _) =>
+        {
+            var t = (DateTime.Now - start).TotalSeconds / 1.2;
+            if (t >= 1)
+            {
+                timer.Stop();
+                timer.Dispose();
+                _flashTimers.Remove(label);
+                label.ForeColor = TextWhite;
+                return;
+            }
+
+            var eased = 1 - (1 - t) * (1 - t);
+            label.ForeColor = Lerp(FxPanel.FxGreen, TextWhite, (float)eased);
+        };
+        timer.Start();
+    }
+
+    private static Color Lerp(Color from, Color to, float t) => Color.FromArgb(
+        (int)(from.R + (to.R - from.R) * t),
+        (int)(from.G + (to.G - from.G) * t),
+        (int)(from.B + (to.B - from.B) * t));
 }
