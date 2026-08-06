@@ -1,0 +1,17 @@
+{
+  "canvas": 1024,
+  "whale": {
+    "width": 860,
+    "top_margin": 24,
+    "source_bbox": [188, 168, 910, 812]
+  },
+  "title": {
+    "text_file": "text.txt",
+    "font": "Microsoft YaHei UI",
+    "bold": true,
+    "size_px": 58,
+    "color": "#0F3B5E",
+    "offset_below_whale": 64
+  },
+  "output": "assets/logo-with-title.png"
+}

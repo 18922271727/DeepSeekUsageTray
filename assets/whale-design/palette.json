@@ -1,0 +1,18 @@
+{
+  "source_file": "whale_source.png",
+  "generated": {
+    "model": "qwen-image-2.0-pro",
+    "size": [1024, 1024],
+    "chroma_key_background": "#00FF00"
+  },
+  "alpha_bbox": [188, 168, 910, 812],
+  "palette": {
+    "body_deep_blue": "#2B4E76",
+    "body_dark": "#1C3759",
+    "belly_and_bubble_light_blue": "#9DDBF6",
+    "bubble_mid_blue": "#79C4E5",
+    "bubble_white": "#FCFDFC",
+    "highlight": "#BCE7F9"
+  },
+  "logo_title_color": "#0F3B5E"
+}

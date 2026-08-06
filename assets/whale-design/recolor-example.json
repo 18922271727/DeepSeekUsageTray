@@ -1,0 +1,15 @@
+{
+  "tolerance": 65,
+  "map": {
+    "#2B4E76": "#1E6B46",
+    "#1C3759": "#123C2A",
+    "#9DDBF6": "#A8E6C9",
+    "#79C4E5": "#5FBFA0",
+    "#BCE7F9": "#C9F2DD",
+    "#A1DDF7": "#AEE8CB",
+    "#86CCEB": "#8FD4B4",
+    "#89D1EC": "#92D6B8",
+    "#A3E1FA": "#ACE8C6",
+    "#FCFDFC": "#FFFFFF"
+  }
+}
