@@ -2,6 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -13,6 +18,10 @@ namespace DeepSeekUsageTray;
 /// </summary>
 internal static class CsdnCli
 {
+    private const string ChromeUa =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/126.0.0.0 Safari/537.36";
+
     public static async Task<int> RunAsync(string[] args)
     {
         if (args.Length == 0)
@@ -30,7 +39,7 @@ internal static class CsdnCli
                 case "check":
                     return await CheckAsync();
                 case "login":
-                    return Login(opts);
+                    return await LoginAsync(opts);
                 case "logout":
                     return Logout();
                 case "list":
@@ -79,7 +88,98 @@ internal static class CsdnCli
         return 0;
     }
 
-    private static int Login(Dictionary<string, string> opts)
+    private static async Task<int> LoginAsync(Dictionary<string, string> opts)
+    {
+        var qrMode = opts.TryGetValue("qr", out var qr) && qr == "true";
+        var generateOnly = opts.TryGetValue("generate-only", out var go) && go == "true";
+        var pollKeyFile = opts.TryGetValue("poll-key-file", out var pk) ? pk : null;
+        var hasPollFile = !string.IsNullOrWhiteSpace(pollKeyFile) && File.Exists(pollKeyFile);
+        if (!qrMode && !generateOnly && !hasPollFile)
+        {
+            return LoginForm(opts);
+        }
+
+        var force = opts.TryGetValue("force", out var f) && f == "true";
+        if (!force && !hasPollFile)
+        {
+            var existing = CsdnSession.Load();
+            if (existing.HasLogin)
+            {
+                var (ok, _, _) = await new CsdnClient(existing).CheckLoginAsync();
+                if (ok)
+                {
+                    Console.WriteLine("已登录，无需重复扫码（如需重新登录请加 --force true）");
+                    return 0;
+                }
+            }
+        }
+
+        var container = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = container };
+        using var http = new HttpClient(handler);
+        http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", ChromeUa);
+        http.DefaultRequestHeaders.TryAddWithoutValidation("Referer", "https://passport.csdn.net/login");
+        http.DefaultRequestHeaders.TryAddWithoutValidation("Origin", "https://passport.csdn.net");
+        http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
+
+        string sceneId;
+        if (hasPollFile)
+        {
+            sceneId = (await File.ReadAllTextAsync(pollKeyFile!)).Trim();
+            Console.WriteLine("等待手机扫码确认…（请用 CSDN App / 微信扫描之前显示的二维码）");
+        }
+        else
+        {
+            var outPath = opts.TryGetValue("out", out var o) ? o : "csdn-login-qr.jpg";
+            var keyFile = opts.TryGetValue("key-file", out var k) ? k : null;
+            Console.WriteLine("正在获取登录二维码…");
+            sceneId = await GenerateQrAsync(http, outPath, keyFile);
+            Console.WriteLine("二维码已保存: " + Path.GetFullPath(outPath));
+            if (generateOnly)
+            {
+                Console.WriteLine("扫码完成后运行: csdn login --poll-key-file " + (keyFile ?? "sceneId.txt"));
+                return 0;
+            }
+            Console.WriteLine("请用 CSDN App 或微信扫码并确认登录…");
+        }
+
+        var deadline = DateTime.Now.AddMinutes(2);
+        var scanned = false;
+        while (DateTime.Now < deadline)
+        {
+            Thread.Sleep(2000);
+            var (status, code, message) = await CheckScanAsync(http, sceneId);
+            if (status || code == "200")
+            {
+                scanned = true;
+                break;
+            }
+            if (!string.IsNullOrWhiteSpace(message) && code != "1070")
+            {
+                Console.WriteLine("扫码状态: " + code + " " + message);
+            }
+        }
+
+        if (!scanned)
+        {
+            throw new InvalidOperationException("等待扫码超时（2 分钟），请重新运行 csdn login --qr");
+        }
+
+        Console.WriteLine("扫码成功，正在完成登录…");
+        var newSession = await DoLoginAsync(http, container, sceneId);
+        var client = new CsdnClient(newSession);
+        var (okFinal, userName, nick) = await client.CheckLoginAsync();
+        if (okFinal)
+        {
+            newSession.UserName = userName;
+            newSession.UserNick = nick;
+        }
+        newSession.Save();
+        Console.WriteLine("✓ 登录成功: " + (string.IsNullOrWhiteSpace(nick) ? userName : nick));
+        return 0;
+    }
+
+    private static int LoginForm(Dictionary<string, string> opts)
     {
         var force = opts.TryGetValue("force", out var f) && f == "true";
         var session = CsdnSession.Load();
@@ -101,6 +201,147 @@ internal static class CsdnCli
 
         Console.Error.WriteLine("未保存登录状态");
         return 1;
+    }
+
+    private static async Task<string> GenerateQrAsync(HttpClient http, string outPath, string? keyFile)
+    {
+        using var content = new StringContent("{}", Encoding.UTF8);
+        content.Headers.TryAddWithoutValidation("Content-Type", "application/json;charset=utf-8");
+        using var response = await http.PostAsync(
+            "https://passport.csdn.net/v1/register/pc/wxapplets/createQrCode",
+            content);
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("data", out var data) ||
+            !data.TryGetProperty("qrCodeUrl", out var qrEl))
+        {
+            throw new InvalidOperationException("获取二维码失败: " + json);
+        }
+
+        var sceneId = data.TryGetProperty("sceneId", out var s) ? s.GetString() ?? "" : "";
+        if (string.IsNullOrWhiteSpace(sceneId))
+        {
+            throw new InvalidOperationException("二维码返回缺少 sceneId: " + json);
+        }
+
+        var qrDataUri = qrEl.GetString() ?? "";
+        var comma = qrDataUri.IndexOf(',');
+        var b64 = comma >= 0 ? qrDataUri[(comma + 1)..] : qrDataUri;
+        File.WriteAllBytes(outPath, Convert.FromBase64String(b64));
+
+        if (!string.IsNullOrWhiteSpace(keyFile))
+        {
+            await File.WriteAllTextAsync(keyFile, sceneId);
+        }
+        return sceneId;
+    }
+
+    private static async Task<(bool Status, string Code, string Message)> CheckScanAsync(
+        HttpClient http,
+        string sceneId)
+    {
+        using var content = new StringContent(JsonSerializer.Serialize(new { sceneId }), Encoding.UTF8);
+        content.Headers.TryAddWithoutValidation("Content-Type", "application/json;charset=utf-8");
+        using var response = await http.PostAsync(
+            "https://passport.csdn.net/v1/register/pc/wxapplets/checkScan",
+            content);
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var status = root.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.True;
+        var code = ReadCode(root);
+        var message = root.TryGetProperty("message", out var m) ? m.GetString() ?? "" : "";
+        return (status, code, message);
+    }
+
+    private static async Task<CsdnSession> DoLoginAsync(
+        HttpClient http,
+        CookieContainer container,
+        string sceneId)
+    {
+        using var content = new StringContent(JsonSerializer.Serialize(new { sceneId }), Encoding.UTF8);
+        content.Headers.TryAddWithoutValidation("Content-Type", "application/json;charset=utf-8");
+        using var response = await http.PostAsync(
+            "https://passport.csdn.net/v1/register/pc/wxapplets/doLogin",
+            content);
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var code = ReadCode(root);
+        var message = root.TryGetProperty("message", out var m) ? m.GetString() ?? "" : "";
+        if (code is not ("200" or "0"))
+        {
+            throw new InvalidOperationException(
+                "扫码登录失败（" + code + "）：" + (string.IsNullOrWhiteSpace(message) ? json : message));
+        }
+
+        // 跟随 redirectUrl 拉取完整登录 Cookie（如 UserInfo / UserToken）
+        if (root.TryGetProperty("data", out var data) &&
+            data.ValueKind == JsonValueKind.Object &&
+            data.TryGetProperty("redirectUrl", out var url) &&
+            url.GetString() is { Length: > 0 } raw)
+        {
+            var redirect = raw;
+            if (!redirect.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !redirect.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                redirect = "https://passport.csdn.net" + (redirect.StartsWith("/", StringComparison.Ordinal) ? "" : "/") + redirect;
+            }
+            try
+            {
+                await http.GetAsync(redirect);
+            }
+            catch
+            {
+                // 跟随跳转失败不影响已写入的 Cookie
+            }
+        }
+
+        var newSession = new CsdnSession
+        {
+            SavedAt = DateTime.Now
+        };
+        foreach (var uri in new[]
+                 {
+                     new Uri("https://passport.csdn.net"),
+                     new Uri("https://www.csdn.net"),
+                     new Uri("https://blog.csdn.net"),
+                     new Uri("https://mp.csdn.net"),
+                     new Uri("https://editor.csdn.net"),
+                     new Uri("https://me.csdn.net"),
+                     new Uri("https://bizapi.csdn.net"),
+                     new Uri("https://blog-console-api.csdn.net")
+                 })
+        {
+            foreach (Cookie cookie in container.GetCookies(uri))
+            {
+                newSession.Cookies[cookie.Name] = cookie.Value;
+            }
+        }
+
+        if (newSession.Cookies.Count < 3)
+        {
+            throw new InvalidOperationException("登录成功但未获取到登录 Cookie，请重试");
+        }
+        return newSession;
+    }
+
+    private static string ReadCode(JsonElement root)
+    {
+        if (!root.TryGetProperty("code", out var codeEl))
+        {
+            return "";
+        }
+        if (codeEl.ValueKind == JsonValueKind.String)
+        {
+            return codeEl.GetString() ?? "";
+        }
+        if (codeEl.ValueKind == JsonValueKind.Number)
+        {
+            return codeEl.GetInt32().ToString();
+        }
+        return "";
     }
 
     private static int Logout()
@@ -212,7 +453,7 @@ internal static class CsdnCli
     private static CsdnSession RequireLogin()
     {
         var session = CsdnSession.Load();
-        if (!session.HasLogin)
+        if (!session.HasLogin && session.Cookies.Count < 5)
         {
             throw new InvalidOperationException("未登录 CSDN，请先运行 csdn login 扫码登录");
         }
@@ -285,7 +526,11 @@ internal static class CsdnCli
             """
             CSDN 发帖命令行:
               csdn check                         检查登录状态
-              csdn login [--force true]          打开网页扫码登录并保存 Cookie
+              csdn login [--force true]          打开网页窗口登录（扫码/手机号）
+              csdn login --qr [--out qr.jpg]     生成二维码直接扫码登录
+              csdn login --generate-only --out qr.jpg --key-file scene.txt
+                                                  只生成二维码，扫码后由 --poll-key-file 完成登录
+              csdn login --poll-key-file scene.txt  轮询扫码状态并完成登录
               csdn logout                        清除登录状态
               csdn list                          列出已发布文章
               csdn view --aid <id或URL>           查看文章信息

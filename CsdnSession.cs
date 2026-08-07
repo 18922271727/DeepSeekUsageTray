@@ -17,6 +17,7 @@ public sealed class CsdnSession
     public DateTime SavedAt { get; set; }
 
     public bool HasLogin =>
+        !string.IsNullOrWhiteSpace(UserName) ||
         Cookies.TryGetValue("UserName", out var un) && !string.IsNullOrWhiteSpace(un) ||
         Cookies.TryGetValue("UserInfo", out var ui) && !string.IsNullOrWhiteSpace(ui) ||
         Cookies.TryGetValue("UserToken", out var ut) && !string.IsNullOrWhiteSpace(ut);

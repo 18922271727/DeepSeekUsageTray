@@ -61,7 +61,7 @@ internal sealed class CsdnClient
 
     private void ApplyCookies(HttpRequestMessage request)
     {
-        if (_session.HasLogin)
+        if (_session.Cookies.Count > 0)
         {
             request.Headers.TryAddWithoutValidation("Cookie", _session.CookieHeader);
         }
@@ -82,6 +82,10 @@ internal sealed class CsdnClient
     /// <summary>检查登录状态，返回 (是否登录, 账号名, 昵称)。</summary>
     public async Task<(bool Ok, string UserName, string Nick)> CheckLoginAsync()
     {
+        // 登录 Cookie 里直接带账号信息，先兜底，避免依赖可能下线的用户接口
+        var (okLocal, nameLocal, nickLocal) = CheckLoginLocal();
+
+        // 尝试在线校验（接口若下线则退回本地判断）
         foreach (var method in new[] { HttpMethod.Post, HttpMethod.Get })
         {
             try
@@ -119,7 +123,26 @@ internal sealed class CsdnClient
                 // 换一种方法再试
             }
         }
-        return (false, string.Empty, string.Empty);
+        return (okLocal, nameLocal, nickLocal);
+    }
+
+    /// <summary>从登录 Cookie 读取账号信息（不需要额外接口）。</summary>
+    public (bool Ok, string UserName, string Nick) CheckLoginLocal()
+    {
+        var userName = _session.Cookies.TryGetValue("UserName", out var un) ? un : "";
+        var nick = _session.Cookies.TryGetValue("UserNick", out var nn) ? nn : "";
+        if (!string.IsNullOrWhiteSpace(nick) && nick.Contains('%'))
+        {
+            try
+            {
+                nick = Uri.UnescapeDataString(nick);
+            }
+            catch
+            {
+                // 解码失败保留原值
+            }
+        }
+        return (!string.IsNullOrWhiteSpace(userName), userName, nick);
     }
 
     /// <summary>上传一张图片到 CSDN 图床，返回 CDN 链接。</summary>
