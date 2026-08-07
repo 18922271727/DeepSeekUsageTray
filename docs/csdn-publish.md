@@ -90,17 +90,62 @@ POST https://bizapi.csdn.net/blog/phoenix/console/v1/history-version/save
 
 ### 4. 图片上传（正文里的截图）
 
+> 2026-08-07 实测：旧接口 `blog-console-api.csdn.net/v1/upload/img?shuiyin=2` 已被 WAF 拦截（返回 HTML 403，非 JSON）。
+> 编辑器当前走"取签名 → 直传华为云 OBS"两步链路，以下为新链路（已实测通过）。
+
+**第 1 步：获取 OSS 直传签名**
+
 ```
-POST https://blog-console-api.csdn.net/v1/upload/img?shuiyin=2
+POST https://bizapi.csdn.net/resource-api/v1/image/direct/upload/signature
 ```
 
-- multipart/form-data，字段名 `file`，返回 `data.url`（形如 `https://img-blog.csdnimg.cn/xxx.png`）。
-- 仅需 Cookie（2021 年验证过无需签名头；实现时需实测，若被 WAF 拦则补浏览器指纹头）。
-- 发布前把 Markdown 里的本地图片路径逐个上传并替换成 CDN 链接。
+签名头（注意带 `x-ca-timestamp`，与发文章用的旧密钥方案不同）：
+
+| Header | 值 |
+|---|---|
+| x-ca-key | `260196572`（上传专用 key） |
+| x-ca-nonce | UUID v4 |
+| x-ca-timestamp | Unix 毫秒时间戳 |
+| x-ca-signature | HMAC-SHA256 签名（密钥 `t5PaqxVQpWoHgLGt7XPIvd5ipJcwJTU7`） |
+| x-ca-signature-headers | `x-ca-key,x-ca-nonce,x-ca-timestamp` |
+
+请求体（JSON）：
+
+```json
+{
+  "imageTemplate": "standard",
+  "appName": "direct_blog_markdown",
+  "imageSuffix": "png"
+}
+```
+
+返回 `data`：`accessId`、`policy`、`signature`、`host`、`filePath`、`callbackUrl`、`callbackBody`、`callbackBodyType`、`customParam`。
+
+**第 2 步：直传华为云 OBS**
+
+```
+POST https://csdn-img-blog.obs.cn-north-4.myhuaweicloud.com
+```
+
+multipart/form-data 字段（顺序无所谓，但文件字段必须是最后一个）：
+
+| 字段 | 值 |
+|---|---|
+| key | 签名返回的 `filePath` |
+| policy / signature / AccessKeyId | 签名返回的原值 |
+| callbackBody / callbackBodyType / callbackUrl | 签名返回的原值 |
+| x:xxx | `customParam` 里每一项，键前面加 `x:` |
+| file | 图片二进制，文件名 `image.<ext>` |
+
+返回：`data.imageUrl`（形如 `https://i-blog.csdnimg.cn/direct/xxx.png`）。
+
+**踩坑记录（必须手写 multipart）**：.NET 的 `MultipartFormDataContent` 会给文件部分自动加 `filename*=utf-8''` 扩展头，华为云 OBS 不识别，报 `POST requires exactly one file upload per request`（ArgumentName=file，ArgumentValue=0）。解决办法是手写标准的 `multipart/form-data` 请求体（字段不带 Content-Type、文件带 `Content-Disposition: form-data; name="file"; filename="image.png"`），再以 `ByteArrayContent` 发送。`StringContent` 字段也会因自带 `Content-Type` 触发同一问题。
+
+发布前把 Markdown 里的本地图片路径逐个上传并替换成 CDN 链接。
 
 ### 5. 登录状态检查 / 读取
 
-- `POST https://me.csdn.net/api/user/show` → 返回昵称/文章数（登录校验）。
+- `POST https://me.csdn.net/api/user/show` 已下线（返回 400"接口已下线"）；改为从 Cookie 里的 `UserName`/`UserNick` 判断账号，必要时再尝试在线校验。
 - 列出/查看已发文章：`https://blog-console-api.csdn.net/v1/...` 系列（实现时按需抓包补充，读取不涉及签名）。
 
 ## 签名算法（x-ca-signature）
@@ -127,6 +172,23 @@ signature = Base64( HMAC-SHA256(签名串, ekey) )
 
 C# 实现：`HMACSHA256`（System.Security.Cryptography）+ `Convert.ToBase64String`，没有难点。
 
+**上传签名接口的变体（含时间戳）**：
+
+```
+签名串 =
+  "POST\n" +
+  "application/json, text/plain, */*\n" +
+  "\n" +
+  "application/json;charset=UTF-8\n" +
+  "\n" +
+  "x-ca-key:260196572\n" +
+  "x-ca-nonce:" + uuid + "\n" +
+  "x-ca-timestamp:" + 毫秒时间戳 + "\n" +
+  "/resource-api/v1/image/direct/upload/signature"
+```
+
+密钥换为 `t5PaqxVQpWoHgLGt7XPIvd5ipJcwJTU7`。程序里做了多组 key/时间戳组合自动兜底，兼容不同时期网关。
+
 ## 风险与边界
 
 - **非官方接口**：CSDN 改版可能临时失效，没有 SLA；好在插件社区一直在维护，前端一改就有人更新。
@@ -142,9 +204,9 @@ C# 实现：`HMACSHA256`（System.Security.Cryptography）+ `Convert.ToBase64Str
 | 文件 | 职责 |
 |---|---|
 | `CsdnSession.cs` | 保存/加载/校验 Cookie（JSON 存 `%APPDATA%\DeepSeekUsageTray\csdn-session.json`） |
-| `CsdnClient.cs` | 签名、saveArticle、history-version/save、图片上传、whoami、list/view |
+| `CsdnClient.cs` | 签名（旧/新两套）、saveArticle、history-version/save、图片上传（签名+OBS 直传）、whoami、list/view |
 | `CsdnLoginForm.cs` | WebView2 内嵌 passport.csdn.net 扫码登录，完成后提取 Cookie |
-| `CsdnCli.cs` | 命令行：`csdn check / login / logout / publish / update / list / view` |
+| `CsdnCli.cs` | 命令行：`csdn check / login / logout / publish / update / list / view / upload` |
 
 发布流程与 B站相同：
 
@@ -152,10 +214,10 @@ C# 实现：`HMACSHA256`（System.Security.Cryptography）+ `Convert.ToBase64Str
 2. 用户确认"可以发送"后执行 `csdn publish --title ... --content ... --tags ...`（本地图片自动上传替换）；
 3. 返回文章 URL（形如 `https://blog.csdn.net/<用户名>/article/details/<id>`）。
 
-## 下一步
+## 当前进度（2026-08-07）
 
-1. 实现 `CsdnClient.cs` + `CsdnCli.cs`（签名 + 两步发布 + 图片上传）；
-2. 内嵌 WebView2 扫码登录，保存会话；
-3. 首次联调：先发 `--draft` 草稿验证签名与字段，通过后再公开；
-4. 验证更新已有文章（`article_id` 填入 + `is_new=0`，实现时实测）；
-5. 稳定后沉淀成 `csdn-publish` skill（和 `bilibili-publish` 并列），并把本调研文档引用进去。
+- [x] 实现 `CsdnClient.cs` + `CsdnCli.cs`（签名 + 两步发布 + 图片上传）；
+- [x] 内嵌 WebView2 扫码登录，保存会话（`csdn login`）；
+- [x] 首次联调：草稿发布成功（含三张截图上传），文章 ID `163553676`；
+- [ ] 验证更新已有文章（`article_id` 填入 + `is_new=0`，实现时实测）；
+- [ ] 稳定后沉淀成 `csdn-publish` skill（和 `bilibili-publish` 并列），并把本调研文档引用进去。

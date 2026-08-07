@@ -46,6 +46,12 @@ internal sealed class CsdnClient
 {
     private const string XCaKey = "203803574";
     private const string EKey = "9znpamsyl2c7cdrr9sas0le9vbc3r6ba";
+    // CSDN 编辑器当前使用的图片上传链路：先取 OSS 上传签名，再直传华为云图床。
+    // 以下密钥来自官方前端脚本（resource-api direct upload 流程）。
+    private const string UploadSignatureUrl = "https://bizapi.csdn.net/resource-api/v1/image/direct/upload/signature";
+    private const string UploadAppKey = "260196572";
+    private const string UploadAppSecret = "t5PaqxVQpWoHgLGt7XPIvd5ipJcwJTU7";
+    private const string OssHost = "https://csdn-img-blog.obs.cn-north-4.myhuaweicloud.com";
     private const string AcceptJson = "application/json, text/plain, */*";
     private const string ChromeUa =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -70,11 +76,59 @@ internal sealed class CsdnClient
     /// <summary>计算 CSDN 接口签名（x-ca-signature）。</summary>
     private static string Sign(string path, string nonce)
     {
-        var toSign = "POST\n" + AcceptJson + "\n\napplication/json;\n\n" +
-                     "x-ca-key:" + XCaKey + "\n" +
-                     "x-ca-nonce:" + nonce + "\n" +
-                     path;
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(EKey));
+        return SignCore("POST", AcceptJson, "application/json;", "", nonce, null, XCaKey, EKey, path, "");
+    }
+
+    /// <summary>
+    /// 计算带 x-ca-timestamp 的新网关签名。
+    /// StringToSign = METHOD\nACCEPT\n\nCONTENT_TYPE\n\nx-ca-key:..\nx-ca-nonce:..\n[x-ca-timestamp:..\n]PATH[?QUERY]
+    /// </summary>
+    private static string SignNew(
+        string method,
+        string accept,
+        string contentType,
+        string path,
+        string query,
+        string nonce,
+        string? timestamp,
+        string key,
+        string secret)
+    {
+        return SignCore(method, accept, contentType, "", nonce, timestamp, key, secret, path, query);
+    }
+
+    private static string SignCore(
+        string method,
+        string accept,
+        string contentType,
+        string date,
+        string nonce,
+        string? timestamp,
+        string key,
+        string secret,
+        string path,
+        string query)
+    {
+        var sb = new StringBuilder();
+        sb.Append(method).Append('\n');
+        sb.Append(accept).Append('\n');
+        sb.Append('\n');
+        sb.Append(contentType).Append('\n');
+        sb.Append(date).Append('\n');
+        sb.Append("x-ca-key:").Append(key).Append('\n');
+        sb.Append("x-ca-nonce:").Append(nonce).Append('\n');
+        if (!string.IsNullOrEmpty(timestamp))
+        {
+            sb.Append("x-ca-timestamp:").Append(timestamp).Append('\n');
+        }
+        sb.Append(path);
+        if (!string.IsNullOrEmpty(query))
+        {
+            sb.Append('?').Append(query);
+        }
+
+        var toSign = sb.ToString();
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
         var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(toSign));
         return Convert.ToBase64String(hash);
     }
@@ -148,18 +202,53 @@ internal sealed class CsdnClient
     /// <summary>上传一张图片到 CSDN 图床，返回 CDN 链接。</summary>
     public async Task<string> UploadImageAsync(string filePath)
     {
-        using var content = new MultipartFormDataContent();
-        var bytes = await File.ReadAllBytesAsync(filePath);
-        var fileContent = new ByteArrayContent(bytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue(GuessMime(filePath));
-        content.Add(fileContent, "file", Path.GetFileName(filePath));
-
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "https://blog-console-api.csdn.net/v1/upload/img?shuiyin=2")
+        var ext = Path.GetExtension(filePath).TrimStart('.').ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(ext))
         {
-            Content = content
+            ext = "png";
+        }
+
+        // 第一步：向 CSDN 请求 OSS 直传签名
+        var sign = await GetUploadSignatureAsync(ext);
+
+        var host = string.IsNullOrWhiteSpace(sign.Host) ? OssHost : sign.Host;
+        if (string.IsNullOrWhiteSpace(sign.AccessId) ||
+            string.IsNullOrWhiteSpace(sign.Policy) ||
+            string.IsNullOrWhiteSpace(sign.Signature) ||
+            string.IsNullOrWhiteSpace(sign.FilePath))
+        {
+            throw new CsdnApiException(0, "获取上传签名失败：返回字段不完整。");
+        }
+
+        // 第二步：把图片直传华为云 OBS 图床。
+        // 手写标准 multipart/form-data（不用 MultipartFormDataContent），
+        // 因为 .NET 会给文件部分附加 filename*=utf-8'' 扩展头，华为云 OBS 不识别，
+        // 会报 “POST requires exactly one file upload per request”。
+        var fields = new Dictionary<string, string>
+        {
+            ["key"] = sign.FilePath,
+            ["policy"] = sign.Policy,
+            ["signature"] = sign.Signature,
+            ["callbackBody"] = sign.CallbackBody ?? "",
+            ["callbackBodyType"] = sign.CallbackBodyType ?? "",
+            ["callbackUrl"] = sign.CallbackUrl ?? "",
+            ["AccessKeyId"] = sign.AccessId
         };
+        foreach (var (k, v) in sign.CustomParams)
+        {
+            fields["x:" + k] = v;
+        }
+
+        var bytes = await File.ReadAllBytesAsync(filePath);
+        var (body, boundary) = BuildObsMultipart(fields, "file", "image." + ext, GuessMime(filePath), bytes);
+        if (IsDebug())
+        {
+            DumpDebug("multipart-body", Encoding.UTF8.GetString(body));
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, host);
+        request.Content = new ByteArrayContent(body);
+        request.Content.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + boundary);
         request.Headers.TryAddWithoutValidation("user-agent", ChromeUa);
         request.Headers.TryAddWithoutValidation("origin", "https://editor.csdn.net");
         request.Headers.TryAddWithoutValidation("referer", "https://editor.csdn.net/");
@@ -167,14 +256,193 @@ internal sealed class CsdnClient
         ApplyCookies(request);
 
         using var response = await _http.SendAsync(request);
-        var root = ParseResponse(await response.Content.ReadAsStringAsync());
-        if (root.TryGetProperty("data", out var data) &&
-            data.TryGetProperty("url", out var url) &&
-            url.GetString() is { Length: > 0 } value)
+        var text = await response.Content.ReadAsStringAsync();
+        if (IsDebug())
         {
-            return value;
+            DumpDebug("oss-response", text);
         }
-        throw new CsdnApiException(0, "图片上传失败：返回数据里没有图片链接。");
+        JsonElement root;
+        try
+        {
+            root = ParseResponse(text);
+        }
+        catch (JsonException)
+        {
+            throw new CsdnApiException(
+                (int)response.StatusCode,
+                "图片上传到图床失败，返回内容不是 JSON：" + Truncate(text, 300));
+        }
+
+        if (root.TryGetProperty("data", out var data))
+        {
+            if (data.ValueKind == JsonValueKind.String && data.GetString() is { Length: > 0 } direct)
+            {
+                return direct;
+            }
+            foreach (var key in new[] { "imageUrl", "url" })
+            {
+                if (data.TryGetProperty(key, out var url) &&
+                    url.GetString() is { Length: > 0 } value)
+                {
+                    return value;
+                }
+            }
+        }
+        throw new CsdnApiException(0, "图片上传到图床后返回数据里没有图片链接：" + Truncate(text, 300));
+    }
+
+    /// <summary>构造浏览器同款 multipart/form-data 请求体，供华为云 OBS 直传。</summary>
+    private static (byte[] Body, string Boundary) BuildObsMultipart(
+        IReadOnlyDictionary<string, string> fields,
+        string fileFieldName,
+        string fileName,
+        string contentType,
+        byte[] fileBytes)
+    {
+        var boundary = "----CsdnObs" + Guid.NewGuid().ToString("N")[..20];
+        var sb = new StringBuilder();
+        foreach (var (name, value) in fields)
+        {
+            sb.Append("--").Append(boundary).Append("\r\n");
+            sb.Append("Content-Disposition: form-data; name=\"").Append(name).Append("\"\r\n\r\n");
+            sb.Append(value).Append("\r\n");
+        }
+        sb.Append("--").Append(boundary).Append("\r\n");
+        sb.Append("Content-Disposition: form-data; name=\"").Append(fileFieldName)
+            .Append("\"; filename=\"").Append(fileName).Append("\"\r\n");
+        sb.Append("Content-Type: ").Append(contentType).Append("\r\n\r\n");
+
+        var head = Encoding.UTF8.GetBytes(sb.ToString());
+        var tail = Encoding.UTF8.GetBytes("\r\n--" + boundary + "--\r\n");
+        var body = new byte[head.Length + fileBytes.Length + tail.Length];
+        Buffer.BlockCopy(head, 0, body, 0, head.Length);
+        Buffer.BlockCopy(fileBytes, 0, body, head.Length, fileBytes.Length);
+        Buffer.BlockCopy(tail, 0, body, head.Length + fileBytes.Length, tail.Length);
+        return (body, boundary);
+    }
+
+    private async Task<UploadSignature> GetUploadSignatureAsync(string ext)
+    {
+        // 依次尝试（新密钥+时间戳）→（旧密钥+时间戳）→（旧密钥）→（新密钥），
+        // 以兼容不同时期的网关配置。
+        var candidates = new[]
+        {
+            (Key: UploadAppKey, Secret: UploadAppSecret, UseTimestamp: true),
+            (Key: XCaKey, Secret: EKey, UseTimestamp: true),
+            (Key: XCaKey, Secret: EKey, UseTimestamp: false),
+            (Key: UploadAppKey, Secret: UploadAppSecret, UseTimestamp: false)
+        };
+
+        Exception? lastError = null;
+        foreach (var (key, secret, useTimestamp) in candidates)
+        {
+            try
+            {
+                return await TryGetUploadSignatureAsync(ext, key, secret, useTimestamp);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+        }
+        throw new CsdnApiException(0, "获取上传签名失败：" + lastError?.Message);
+    }
+
+    private async Task<UploadSignature> TryGetUploadSignatureAsync(
+        string ext,
+        string key,
+        string secret,
+        bool useTimestamp)
+    {
+        var nonce = Guid.NewGuid().ToString("D");
+        var timestamp = useTimestamp ? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString() : null;
+        var contentType = "application/json;charset=UTF-8";
+        var uri = new Uri(UploadSignatureUrl);
+        var signature = SignNew(
+            "POST",
+            AcceptJson,
+            contentType,
+            uri.AbsolutePath,
+            "",
+            nonce,
+            timestamp,
+            key,
+            secret);
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["imageTemplate"] = "standard",
+            ["appName"] = "direct_blog_markdown",
+            ["imageSuffix"] = ext
+        };
+        var json = JsonSerializer.Serialize(payload);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, UploadSignatureUrl);
+        request.Headers.TryAddWithoutValidation("accept", AcceptJson);
+        request.Headers.TryAddWithoutValidation("accept-language", "zh-CN,zh;q=0.9");
+        request.Headers.TryAddWithoutValidation("origin", "https://editor.csdn.net");
+        request.Headers.TryAddWithoutValidation("referer", "https://editor.csdn.net/");
+        request.Headers.TryAddWithoutValidation("user-agent", ChromeUa);
+        request.Headers.TryAddWithoutValidation("x-ca-key", key);
+        request.Headers.TryAddWithoutValidation("x-ca-nonce", nonce);
+        if (useTimestamp)
+        {
+            request.Headers.TryAddWithoutValidation("x-ca-timestamp", timestamp);
+        }
+        request.Headers.TryAddWithoutValidation("x-ca-signature", signature);
+        request.Headers.TryAddWithoutValidation(
+            "x-ca-signature-headers",
+            useTimestamp ? "x-ca-key,x-ca-nonce,x-ca-timestamp" : "x-ca-key,x-ca-nonce");
+        ApplyCookies(request);
+        request.Content = new ByteArrayContent(Encoding.UTF8.GetBytes(json));
+        request.Content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+
+        using var response = await _http.SendAsync(request);
+        var root = ParseResponse(await response.Content.ReadAsStringAsync());
+        if (IsDebug())
+        {
+            DumpDebug("sign-response", root.GetRawText());
+        }
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+        {
+            throw new CsdnApiException(0, "返回数据里没有 data。");
+        }
+
+        var result = new UploadSignature
+        {
+            AccessId = GetString(data, "accessId"),
+            Policy = GetString(data, "policy"),
+            Signature = GetString(data, "signature"),
+            Host = GetString(data, "host"),
+            FilePath = GetString(data, "filePath"),
+            CallbackUrl = GetString(data, "callbackUrl"),
+            CallbackBody = GetString(data, "callbackBody"),
+            CallbackBodyType = GetString(data, "callbackBodyType")
+        };
+        if (data.TryGetProperty("customParam", out var custom) && custom.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in custom.EnumerateObject())
+            {
+                result.CustomParams[prop.Name] =
+                    prop.Value.ValueKind == JsonValueKind.String
+                        ? prop.Value.GetString() ?? ""
+                        : prop.Value.GetRawText();
+            }
+        }
+        return result;
+    }
+
+    private sealed class UploadSignature
+    {
+        public string AccessId { get; set; } = "";
+        public string Policy { get; set; } = "";
+        public string Signature { get; set; } = "";
+        public string Host { get; set; } = "";
+        public string FilePath { get; set; } = "";
+        public string CallbackUrl { get; set; } = "";
+        public string CallbackBody { get; set; } = "";
+        public string CallbackBodyType { get; set; } = "";
+        public Dictionary<string, string> CustomParams { get; } = new();
     }
 
     /// <summary>
@@ -396,4 +664,35 @@ internal sealed class CsdnClient
             ".webp" => "image/webp",
             _ => "application/octet-stream"
         };
+
+    private static string Truncate(string text, int max)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return "";
+        }
+        text = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        return text.Length <= max ? text : text[..max] + "…";
+    }
+
+    private static bool IsDebug() =>
+        string.Equals(Environment.GetEnvironmentVariable("CSDN_DEBUG"), "1", StringComparison.Ordinal);
+
+    private static void DumpDebug(string name, string text)
+    {
+        if (!IsDebug())
+        {
+            return;
+        }
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(Path.GetTempPath(), "csdn-debug.log"),
+                $"[{name}]\n{text}\n\n");
+        }
+        catch
+        {
+            // 调试日志写失败不影响主流程
+        }
+    }
 }

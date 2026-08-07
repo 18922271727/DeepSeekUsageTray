@@ -46,6 +46,8 @@ internal static class CsdnCli
                     return await ListAsync();
                 case "view":
                     return await ViewAsync(opts);
+                case "upload":
+                    return await UploadAsync(opts);
                 case "publish":
                     return await PublishAsync(opts, update: false);
                 case "update":
@@ -392,6 +394,21 @@ internal static class CsdnCli
         return 0;
     }
 
+    private static async Task<int> UploadAsync(Dictionary<string, string> opts)
+    {
+        var session = RequireLogin();
+        var file = opts.GetValueOrDefault("file", "");
+        if (string.IsNullOrWhiteSpace(file) || !File.Exists(file))
+        {
+            throw new InvalidOperationException("缺少 --file 或找不到图片文件: " + file);
+        }
+
+        Console.WriteLine("正在上传图片: " + Path.GetFileName(file));
+        var url = await new CsdnClient(session).UploadImageAsync(file);
+        Console.WriteLine(url);
+        return 0;
+    }
+
     private static async Task<int> PublishAsync(Dictionary<string, string> opts, bool update)
     {
         var session = RequireLogin();
@@ -534,6 +551,7 @@ internal static class CsdnCli
               csdn logout                        清除登录状态
               csdn list                          列出已发布文章
               csdn view --aid <id或URL>           查看文章信息
+              csdn upload --file <图片>            上传一张图片，返回 CDN 链接
               csdn publish --title <标题> --content <正文.md> [--tags <a,b>] [--description <摘要>] [--draft true]
               csdn update --aid <id或URL> --title <标题> --content <正文.md> [--tags ...] [--description ...]
             """);
