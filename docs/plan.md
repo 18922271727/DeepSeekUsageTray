@@ -24,8 +24,8 @@
 
 - [x] 调研发布接口与签名算法（见 docs/csdn-publish.md）
 - [x] 实现 CsdnClient / CsdnSession / CsdnLoginForm / CsdnCli 并接入 `csdn` 命令（签名已实测：无 Cookie 请求返回 401“请登录后操作”而非签名错误）
-- [ ] 登录 CSDN 并捕获会话（待用户双击 `tools\csdn-login.cmd` 扫码）
-- [ ] 发布 Markdown 文章（含截图）
+- [x] 登录 CSDN 并捕获会话（账号 qq_33543608；支持窗口扫码/手机号 + 二维码轮询两种方式）
+- [x] 发布 Markdown 文章（含截图）——草稿联调通过（文章 ID 163552099）
 - [ ] 支持更新已有文章
 
 ## 阶段四：一键更新发版自动化
