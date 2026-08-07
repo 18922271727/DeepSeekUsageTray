@@ -206,7 +206,7 @@ C# 实现：`HMACSHA256`（System.Security.Cryptography）+ `Convert.ToBase64Str
 | `CsdnSession.cs` | 保存/加载/校验 Cookie（JSON 存 `%APPDATA%\DeepSeekUsageTray\csdn-session.json`） |
 | `CsdnClient.cs` | 签名（旧/新两套）、saveArticle、history-version/save、图片上传（签名+OBS 直传）、whoami、list/view |
 | `CsdnLoginForm.cs` | WebView2 内嵌 passport.csdn.net 扫码登录，完成后提取 Cookie |
-| `CsdnCli.cs` | 命令行：`csdn check / login / logout / publish / update / list / view / upload`；`publish/update` 支持 `--cover <封面图>` 自动上传并设置封面 |
+| `CsdnCli.cs` | 命令行：`csdn check / login / logout / publish / update / list / view / upload`；`publish/update` 默认自动上传内嵌的鲸鱼封面（`logo-gray-blue.png`），可用 `--cover <封面图>` 覆盖、`--cover none` 关闭 |
 
 发布流程与 B站相同：
 
@@ -220,5 +220,6 @@ C# 实现：`HMACSHA256`（System.Security.Cryptography）+ `Convert.ToBase64Str
 - [x] 内嵌 WebView2 扫码登录，保存会话（`csdn login`）；
 - [x] 首次联调：草稿发布成功（含三张截图上传），文章 ID `163553676`；
 - [x] 封面支持：`--cover` 自动上传并写入 `cover_images`（已实测更新草稿 163553676）；
+- [x] 默认封面：`logo-gray-blue.png`（鲸鱼+两行文字）内嵌为发布默认封面，`--cover` 可覆盖（已实测）；
 - [ ] 验证更新已有文章（`article_id` 填入 + `is_new=0`，实现时实测）；
 - [ ] 稳定后沉淀成 `csdn-publish` skill（和 `bilibili-publish` 并列），并把本调研文档引用进去。

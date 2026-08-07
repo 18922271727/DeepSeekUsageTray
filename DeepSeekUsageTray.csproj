@@ -17,6 +17,8 @@
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <EmbeddedResource Include="whale.png" />
     <EmbeddedResource Include="whale.ico" />
+    <!-- CSDN 发布默认封面（鲸鱼 + 两行文字，logo-gray-blue.png 的副本） -->
+    <EmbeddedResource Include="assets\logo-gray-blue.png" LogicalName="csdn-default-cover.png" />
   </ItemGroup>
 
   <!-- 显式引用 WebView2 托管程序集，避免某些环境下 NuGet 的 buildTransitive

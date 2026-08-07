@@ -449,15 +449,40 @@ internal static class CsdnCli
         };
 
         var coverPath = opts.GetValueOrDefault("cover", "");
-        if (!string.IsNullOrWhiteSpace(coverPath))
+        var tempCover = false;
+        if (string.IsNullOrWhiteSpace(coverPath))
+        {
+            // 默认封面：内嵌的鲸鱼 + 文字版（logo-gray-blue.png）
+            coverPath = ExtractDefaultCover();
+            tempCover = !string.IsNullOrWhiteSpace(coverPath);
+        }
+        if (!string.IsNullOrWhiteSpace(coverPath) &&
+            !string.Equals(coverPath, "none", StringComparison.OrdinalIgnoreCase))
         {
             if (!File.Exists(coverPath))
             {
                 throw new InvalidOperationException("找不到封面图片: " + coverPath);
             }
-            Console.WriteLine("正在上传封面: " + Path.GetFileName(coverPath));
-            draft.Cover = await client.UploadImageAsync(coverPath);
-            Console.WriteLine("封面上传成功: " + draft.Cover);
+            try
+            {
+                Console.WriteLine("正在上传封面: " + Path.GetFileName(coverPath));
+                draft.Cover = await client.UploadImageAsync(coverPath);
+                Console.WriteLine("封面上传成功: " + draft.Cover);
+            }
+            finally
+            {
+                if (tempCover)
+                {
+                    try
+                    {
+                        File.Delete(coverPath);
+                    }
+                    catch
+                    {
+                        // 临时封面删不掉不影响主流程
+                    }
+                }
+            }
         }
 
         var articleId = await client.SaveArticleAsync(draft, draftMode, aid);
@@ -566,6 +591,34 @@ internal static class CsdnCli
               csdn upload --file <图片>            上传一张图片，返回 CDN 链接
               csdn publish --title <标题> --content <正文.md> [--tags <a,b>] [--description <摘要>] [--cover <封面图>] [--draft true]
               csdn update --aid <id或URL> --title <标题> --content <正文.md> [--tags ...] [--description ...] [--cover <封面图>]
-            """);
+            """); 
+    }
+
+    /// <summary>把内嵌的 CSDN 默认封面释放到临时目录，返回临时文件路径。</summary>
+    private static string ExtractDefaultCover()
+    {
+        try
+        {
+            var asm = typeof(CsdnCli).Assembly;
+            var name = asm.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("csdn-default-cover.png", StringComparison.OrdinalIgnoreCase));
+            if (name == null)
+            {
+                return "";
+            }
+            var tmp = Path.Combine(Path.GetTempPath(), "csdn-default-cover-" + Guid.NewGuid().ToString("N") + ".png");
+            using var src = asm.GetManifestResourceStream(name);
+            if (src == null)
+            {
+                return "";
+            }
+            using var dst = File.Create(tmp);
+            src.CopyTo(dst);
+            return tmp;
+        }
+        catch
+        {
+            return "";
+        }
     }
 }

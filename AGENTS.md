@@ -13,6 +13,7 @@
 | `whale.ico` | 托盘/程序图标（16~256 多尺寸，EmbeddedResource + ApplicationIcon） |
 | `assets/logo-with-title.png` | 默认单行文字组合图（透明底） |
 | `assets/logo-gray-blue.png` | 灰蓝版两行文字组合图（当前品牌版） |
+| `assets/logo-gray-blue.png` | 同时是 CSDN 发布默认封面（编译时内嵌为 `csdn-default-cover.png`；`csdn publish/update` 不带 `--cover` 时自动使用） |
 | `assets/bili-cover.png` | B站 专栏封面 |
 | `assets/whale-design/prompt.txt` | 鲸鱼原始 AI 生成提示词 |
 | `assets/whale-design/palette.json` | 色板（角色 + HEX） |
