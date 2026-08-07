@@ -448,6 +448,18 @@ internal static class CsdnCli
                 src => ResolveImageAsync(client, src, contentDir))
         };
 
+        var coverPath = opts.GetValueOrDefault("cover", "");
+        if (!string.IsNullOrWhiteSpace(coverPath))
+        {
+            if (!File.Exists(coverPath))
+            {
+                throw new InvalidOperationException("找不到封面图片: " + coverPath);
+            }
+            Console.WriteLine("正在上传封面: " + Path.GetFileName(coverPath));
+            draft.Cover = await client.UploadImageAsync(coverPath);
+            Console.WriteLine("封面上传成功: " + draft.Cover);
+        }
+
         var articleId = await client.SaveArticleAsync(draft, draftMode, aid);
         if (articleId <= 0)
         {
@@ -552,8 +564,8 @@ internal static class CsdnCli
               csdn list                          列出已发布文章
               csdn view --aid <id或URL>           查看文章信息
               csdn upload --file <图片>            上传一张图片，返回 CDN 链接
-              csdn publish --title <标题> --content <正文.md> [--tags <a,b>] [--description <摘要>] [--draft true]
-              csdn update --aid <id或URL> --title <标题> --content <正文.md> [--tags ...] [--description ...]
+              csdn publish --title <标题> --content <正文.md> [--tags <a,b>] [--description <摘要>] [--cover <封面图>] [--draft true]
+              csdn update --aid <id或URL> --title <标题> --content <正文.md> [--tags ...] [--description ...] [--cover <封面图>]
             """);
     }
 }

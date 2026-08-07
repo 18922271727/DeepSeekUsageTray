@@ -18,6 +18,7 @@ public sealed class CsdnDraft
     public string Description { get; set; } = string.Empty;
     public string Tags { get; set; } = string.Empty;
     public string ContentHtml { get; set; } = string.Empty;
+    public string Cover { get; set; } = string.Empty;
 }
 
 public sealed class CsdnArticle
@@ -469,7 +470,9 @@ internal sealed class CsdnClient
             ["source"] = "pc_postedit",
             ["not_auto_saved"] = 1,
             ["creator_activity_id"] = "",
-            ["cover_images"] = Array.Empty<string>(),
+            ["cover_images"] = string.IsNullOrEmpty(draft.Cover)
+                ? Array.Empty<string>()
+                : new[] { draft.Cover },
             ["cover_type"] = 1,
             ["vote_id"] = 0,
             ["resource_id"] = "",
