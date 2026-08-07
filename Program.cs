@@ -38,6 +38,13 @@ internal static class Program
             return LanzouCli.Run(args.Skip(lanzouIndex + 1).ToArray());
         }
 
+        // CSDN 发布命令：csdn <check|login|logout|list|view|publish|update> [...]
+        var csdnIndex = Array.IndexOf(args, "csdn");
+        if (csdnIndex >= 0)
+        {
+            return CsdnCli.RunAsync(args.Skip(csdnIndex + 1).ToArray()).GetAwaiter().GetResult();
+        }
+
         using var mutex = new Mutex(true, @"Local\DeepSeekUsageTray", out var createdNew);
         if (!createdNew)
         {

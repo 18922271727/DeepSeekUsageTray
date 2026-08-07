@@ -23,7 +23,8 @@
 ## 阶段三：CSDN 自动发帖器
 
 - [x] 调研发布接口与签名算法（见 docs/csdn-publish.md）
-- [ ] 登录 CSDN 并捕获会话
+- [x] 实现 CsdnClient / CsdnSession / CsdnLoginForm / CsdnCli 并接入 `csdn` 命令（签名已实测：无 Cookie 请求返回 401“请登录后操作”而非签名错误）
+- [ ] 登录 CSDN 并捕获会话（待用户双击 `tools\csdn-login.cmd` 扫码）
 - [ ] 发布 Markdown 文章（含截图）
 - [ ] 支持更新已有文章
 
